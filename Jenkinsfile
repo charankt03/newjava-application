@@ -19,7 +19,7 @@ pipeline {
         SONAR_SERVER = 'sonarqube-server'
         SONAR_PROJECT_KEY = 'newjava-app'
 
-        // AWS / ECR (MATCHES YOUR SCREENSHOT)
+        // AWS / ECR
         AWS_REGION = 'ap-south-1'
         AWS_ACCOUNT_ID = '410687236364'
         ECR_REPO_NAME = 'newjava-app'
@@ -64,13 +64,12 @@ pipeline {
 
         stage('Push Image to ECR') {
             steps {
-                    sh '''
-                    aws ecr get-login-password --region ${AWS_REGION} | \
-                    docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                sh '''
+                aws ecr get-login-password --region ${AWS_REGION} | \
+                docker login --username AWS --password-stdin ${ECR_REGISTRY}
 
-                    docker push ${FULL_IMAGE_NAME}
-                    '''
-                }
+                docker push ${FULL_IMAGE_NAME}
+                '''
             }
         }
     }
@@ -83,3 +82,4 @@ pipeline {
             echo "❌ Pipeline failed"
         }
     }
+}
