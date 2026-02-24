@@ -54,20 +54,10 @@ pipeline {
             }
         }
 
-        stage('Build Java Artifact') {
-            steps {
-                sh '''
-                mvn clean package -DskipTests
-                ls -lh target
-                '''
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 sh '''
-                docker build -t ${FULL_IMAGE_NAME} .
-                docker images | grep newjava-app
+                docker build --no-cache -t ${FULL_IMAGE_NAME} .
                 '''
             }
         }
