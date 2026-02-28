@@ -6,9 +6,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/charankt03/newjava-gitops.git
-    targetRevision: main
-    path: apps/newjava-app
+    repoURL: https://github.com/charankt03/newjava-application.git
+    targetRevision: master
+    path: git-app
   destination:
     server: https://kubernetes.default.svc
     namespace: default
