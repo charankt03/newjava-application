@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: newjava-app
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: newjava-app
+  template:
+    metadata:
+      labels:
+        app: newjava-app
+    spec:
+      containers:
+      - name: newjava-app
+        image: 410687236364.dkr.ecr.ap-south-1.amazonaws.com/newjava-app:master-10
+        ports:
+        - containerPort: 8080
