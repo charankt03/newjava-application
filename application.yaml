@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: newjava-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/charankt03/newjava-gitops.git
+    targetRevision: main
+    path: apps/newjava-app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
