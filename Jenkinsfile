@@ -64,4 +64,44 @@ pipeline {
             steps {
                 withCredentials([
                     usernamePassword(
-                        credentialsId
+                        credentialsId: 'github-creds',
+                        usernameVariable: 'GIT_USER',
+                        passwordVariable: 'GIT_TOKEN'
+                    )
+                ]) {
+                    sh """
+                        rm -rf gitops
+                        git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/charankt03/newjava-gitops.git gitops
+                        cd gitops/apps/newjava-app
+                        
+                        # Corrected sed: uses | as delimiter to avoid path slash conflicts
+                        sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" deployment.yaml
+
+                        git config user.email "jenkins@ci.local"
+                        git config user.name "Jenkins CI"
+                        git add deployment.yaml
+                        if git diff --quiet && git diff --staged --quiet; then
+                            echo "No changes to commit"
+                        else
+                            git commit -m "Update image to ${IMAGE_TAG}"
+                            git push origin main
+                        fi
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ CI/CD completed successfully: ${FULL_IMAGE_NAME}"
+        }
+        failure {
+            echo "❌ Pipeline failed"
+        }
+        cleanup {
+            // Be careful with -af in production; it removes all unused images
+            sh 'docker system prune -f || true'
+        }
+    }
+}
