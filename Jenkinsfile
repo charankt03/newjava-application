@@ -3,24 +3,26 @@ pipeline {
 
     tools {
         maven 'maven-3.9'
-        jdk 'jdk-11'
+        jdk 'jdk-17'
     }
 
     parameters {
         choice(
             name: 'BRANCH',
-            choices: ['main', 'dev', 'release'],
+            choices: ['master', 'dev', 'release'],
             description: 'Select Git branch'
         )
     }
 
     environment {
+        // SonarQube
         SONAR_SERVER = 'sonarqube-server'
-        SONAR_PROJECT_KEY = 'myapp'
+        SONAR_PROJECT_KEY = 'newjava-app'
 
+        // AWS / ECR
         AWS_REGION = 'ap-south-1'
-        AWS_ACCOUNT_ID = '420838436623'
-        ECR_REPO_NAME = 'hello-java'
+        AWS_ACCOUNT_ID = '410687236364'
+        ECR_REPO_NAME = 'newjava-app'
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
         IMAGE_TAG = "${params.BRANCH}-${BUILD_NUMBER}"
@@ -29,25 +31,24 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Source Code') {
             steps {
                 git branch: "${params.BRANCH}",
-                    url: 'https://github.com/kskarthik172/myapp-source.git'
+                    url: 'https://github.com/charankt03/newjava-application.git'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv("${SONAR_SERVER}") {
-                    withCredentials([string(
-                        credentialsId: 'sonar-token',
-                        variable: 'SONAR_TOKEN'
-                    )]) {
-                        sh """
-                            mvn clean verify sonar:sonar \
-                            -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                            -Dsonar.login=${SONAR_TOKEN}
-                        """
+                    withCredentials([
+                        string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')
+                    ]) {
+                        sh '''
+                        mvn clean verify sonar:sonar \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.login=${SONAR_TOKEN}
+                        '''
                     }
                 }
             }
@@ -55,47 +56,52 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh """
-                    docker build -t ${FULL_IMAGE_NAME} .
-                """
+                sh '''
+                docker build --no-cache -t ${FULL_IMAGE_NAME} .
+                '''
             }
         }
 
         stage('Push Image to ECR') {
             steps {
-                sh """
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-ecr-creds']
+                ]) {
+                    sh '''
                     aws ecr get-login-password --region ${AWS_REGION} | \
                     docker login --username AWS --password-stdin ${ECR_REGISTRY}
 
                     docker push ${FULL_IMAGE_NAME}
-                """
+                    '''
+                }
             }
         }
 
-        stage('Update Kubernetes Manifest') {
+        stage('Update GitOps Repo for ArgoCD') {
             steps {
-                sh """
-                    sed -i 's|image: .*|image: ${FULL_IMAGE_NAME}|g' k8s/deployment.yaml
-                """
-            }
-        }
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'github-creds',
+                        usernameVariable: 'GIT_USER',
+                        passwordVariable: 'GIT_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                    rm -rf gitops
+                    git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/charankt03/newjava-gitops.git gitops
 
-        stage('Commit & Push Updated YAML') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'github-creds',
-                    usernameVariable: 'GIT_USER',
-                    passwordVariable: 'GIT_PASS'
-                )]) {
-                    sh """
-                        git config user.email "jenkins@local"
-                        git config user.name "jenkins"
+                    cd gitops/apps/newjava-app
 
-                        git add k8s/deployment.yaml
-                        git commit -m "Updated image to ${IMAGE_TAG}" || echo "No changes"
+                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" deployment.yaml
 
-                        git push https://${GIT_USER}:${GIT_PASS}@github.com/kskarthik172/myapp-source.git HEAD:${params.BRANCH}
-                    """
+                    git config user.email "jenkins@ci.local"
+                    git config user.name "Jenkins CI"
+
+                    git add deployment.yaml
+                    git commit -m "Update image to ${IMAGE_TAG}"
+                    git push origin main
+                    '''
                 }
             }
         }
@@ -103,11 +109,12 @@ pipeline {
 
     post {
         success {
-            echo "🚀 Full CI/CD + GitOps Deployment Completed!"
-            echo "Deployed Image: ${FULL_IMAGE_NAME}"
+            echo "✅ CI/CD completed successfully"
+            echo "🚀 Image pushed: ${FULL_IMAGE_NAME}"
+            echo "📦 ArgoCD will auto-sync the deployment"
         }
         failure {
-            echo "❌ Pipeline failed!"
+            echo "❌ Pipeline failed"
         }
     }
 }
