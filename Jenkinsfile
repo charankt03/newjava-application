@@ -67,22 +67,22 @@ pipeline {
             }
         }
 
-        stage('Update Deployment YAML (GitOps)') {
+        stage('Update Deployment YML (GitOps)') {
             steps {
                 sh """
-                    echo "===== Updating deployment.yaml ====="
+                    echo "===== Updating deployment.yml ====="
 
-                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|" git-app/deployment.yaml
+                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|" git-app/deployment.yml
 
-                    echo "===== Updated deployment.yaml ====="
-                    cat git-app/deployment.yaml
+                    echo "===== Updated deployment.yml ====="
+                    cat git-app/deployment.yml
                 """
 
                 sh """
                     git config user.name "jenkins"
                     git config user.email "jenkins@local"
 
-                    git add git-app/deployment.yaml
+                    git add git-app/deployment.yml
 
                     git commit -m "Update image to ${IMAGE_TAG}" || echo "No changes to commit"
 
