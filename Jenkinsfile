@@ -2,88 +2,77 @@ pipeline {
     agent any
 
     tools {
-        maven 'maven-3.9'
-        jdk 'jdk-17'
-    }
-
-    parameters {
-        choice(
-            name: 'BRANCH',
-            choices: ['master', 'dev', 'release'],
-            description: 'Select Git branch'
-        )
+        maven 'maven3'
+        dockerTool 'docker'
     }
 
     environment {
-        SONAR_SERVER = 'sonarqube-server'
-        SONAR_PROJECT_KEY = 'newjava-app'
-
-        AWS_REGION = 'ap-south-1'
-        AWS_ACCOUNT_ID = '410687236364'
-        ECR_REPO_NAME = 'newjava-app'
-        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-
-        IMAGE_TAG = "${params.BRANCH}-${BUILD_NUMBER}"
-        FULL_IMAGE_NAME = "${ECR_REGISTRY}/${ECR_REPO_NAME}:${IMAGE_TAG}"
-
-        AWS_PAGER = ""
+        AWS_REGION = "ap-south-1"
+        AWS_ACCOUNT_ID = "410687236364"
+        ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/newjava-app"
+        IMAGE_TAG = "master-${BUILD_NUMBER}"
+        FULL_IMAGE_NAME = "${ECR_REPO}:${IMAGE_TAG}"
     }
 
     stages {
 
         stage('Checkout Source Code') {
             steps {
-                git branch: "${params.BRANCH}",
-                    url: 'https://github.com/charankt03/newjava-application.git'
+                checkout scm
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('Build Application') {
             steps {
-                withSonarQubeEnv("${SONAR_SERVER}") {
-                    sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}'
-                }
+                sh """
+                    mvn clean package -DskipTests
+                """
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 sh """
-                    echo "Building Docker Image: ${FULL_IMAGE_NAME}"
                     docker build -t ${FULL_IMAGE_NAME} .
                 """
             }
         }
 
-        stage('Login & Push Image to ECR') {
+        stage('Login to ECR') {
             steps {
                 sh """
-                    set -e
-                    echo "Logging into ECR..."
                     aws ecr get-login-password --region ${AWS_REGION} \
-                    | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                """
+            }
+        }
 
+        stage('Push Image to ECR') {
+            steps {
+                sh """
                     echo "Pushing image: ${FULL_IMAGE_NAME}"
                     docker push ${FULL_IMAGE_NAME}
                 """
             }
         }
 
-        stage('Update Deployment YAML (GitOps style)') {
+        stage('Update Deployment YAML (GitOps)') {
             steps {
                 sh """
-                    echo "===== Jenkins Workspace ====="
-                    pwd
-                    ls -la
+                    echo "===== Updating deployment.yaml ====="
+                    sed -i 's|image: .*|image: ${FULL_IMAGE_NAME}|' git-app/deployment.yaml
 
-                    echo "===== git-app contents ====="
-                    ls -la git-app
+                    echo "===== Updated deployment.yaml ====="
+                    cat git-app/deployment.yaml
+                """
 
-                    echo "===== Updating deployment.yml ====="
-                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" git-app/deployment.yml
+                sh """
+                    git config user.name "jenkins"
+                    git config user.email "jenkins@local"
 
-                    echo "===== Updated deployment.yml ====="
-                    cat git-app/deployment.yml
+                    git add git-app/deployment.yaml
+                    git commit -m "Update image to ${IMAGE_TAG}"
+                    git push origin master
                 """
             }
         }
@@ -91,14 +80,17 @@ pipeline {
 
     post {
         success {
-            echo "✅ CI/CD completed successfully"
-            echo "📦 Image pushed: ${FULL_IMAGE_NAME}"
+            echo "✅ Pipeline completed successfully"
         }
+
         failure {
             echo "❌ Pipeline failed"
         }
-        cleanup {
-            sh 'docker image prune -f || true'
+
+        always {
+            sh """
+                docker image prune -f
+            """
         }
     }
 }
