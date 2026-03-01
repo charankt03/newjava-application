@@ -2,55 +2,66 @@ pipeline {
     agent any
 
     tools {
-        maven 'maven3'
-        dockerTool 'docker'
+        maven 'maven-3.9'
+        jdk 'jdk-17'
+    }
+
+    parameters {
+        choice(
+            name: 'BRANCH',
+            choices: ['master', 'dev', 'release'],
+            description: 'Select Git branch'
+        )
     }
 
     environment {
-        AWS_REGION = "ap-south-1"
-        AWS_ACCOUNT_ID = "410687236364"
-        ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/newjava-app"
-        IMAGE_TAG = "master-${BUILD_NUMBER}"
-        FULL_IMAGE_NAME = "${ECR_REPO}:${IMAGE_TAG}"
+        SONAR_SERVER = 'sonarqube-server'
+        SONAR_PROJECT_KEY = 'newjava-app'
+
+        AWS_REGION = 'ap-south-1'
+        AWS_ACCOUNT_ID = '410687236364'
+        ECR_REPO_NAME = 'newjava-app'
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+        IMAGE_TAG = "${params.BRANCH}-${BUILD_NUMBER}"
+        FULL_IMAGE_NAME = "${ECR_REGISTRY}/${ECR_REPO_NAME}:${IMAGE_TAG}"
+
+        AWS_PAGER = ""
     }
 
     stages {
 
         stage('Checkout Source Code') {
             steps {
-                checkout scm
+                git branch: "${params.BRANCH}",
+                    url: 'https://github.com/charankt03/newjava-application.git'
             }
         }
 
-        stage('Build Application') {
+        stage('SonarQube Analysis') {
             steps {
-                sh """
-                    mvn clean package -DskipTests
-                """
+                withSonarQubeEnv("${SONAR_SERVER}") {
+                    sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}'
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 sh """
+                    echo "Building Docker Image: ${FULL_IMAGE_NAME}"
                     docker build -t ${FULL_IMAGE_NAME} .
                 """
             }
         }
 
-        stage('Login to ECR') {
+        stage('Login & Push Image to ECR') {
             steps {
                 sh """
+                    set -e
                     aws ecr get-login-password --region ${AWS_REGION} \
-                    | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                """
-            }
-        }
+                    | docker login --username AWS --password-stdin ${ECR_REGISTRY}
 
-        stage('Push Image to ECR') {
-            steps {
-                sh """
-                    echo "Pushing image: ${FULL_IMAGE_NAME}"
                     docker push ${FULL_IMAGE_NAME}
                 """
             }
@@ -60,7 +71,8 @@ pipeline {
             steps {
                 sh """
                     echo "===== Updating deployment.yaml ====="
-                    sed -i 's|image: .*|image: ${FULL_IMAGE_NAME}|' git-app/deployment.yaml
+
+                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|" git-app/deployment.yaml
 
                     echo "===== Updated deployment.yaml ====="
                     cat git-app/deployment.yaml
@@ -71,8 +83,10 @@ pipeline {
                     git config user.email "jenkins@local"
 
                     git add git-app/deployment.yaml
-                    git commit -m "Update image to ${IMAGE_TAG}"
-                    git push origin master
+
+                    git commit -m "Update image to ${IMAGE_TAG}" || echo "No changes to commit"
+
+                    git push origin ${params.BRANCH}
                 """
             }
         }
@@ -80,17 +94,15 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline completed successfully"
+            echo "✅ CI/CD completed successfully"
+            echo "📦 Image pushed: ${FULL_IMAGE_NAME}"
+            echo "🚀 Argo CD will auto-sync"
         }
-
         failure {
             echo "❌ Pipeline failed"
         }
-
-        always {
-            sh """
-                docker image prune -f
-            """
+        cleanup {
+            sh 'docker image prune -f || true'
         }
     }
 }
