@@ -59,34 +59,31 @@ pipeline {
             steps {
                 sh """
                     set -e
+                    echo "Logging into ECR..."
                     aws ecr get-login-password --region ${AWS_REGION} \
                     | docker login --username AWS --password-stdin ${ECR_REGISTRY}
 
+                    echo "Pushing image: ${FULL_IMAGE_NAME}"
                     docker push ${FULL_IMAGE_NAME}
                 """
             }
         }
 
-        stage('Update Deployment YML (GitOps)') {
+        stage('Update Deployment YAML (GitOps style)') {
             steps {
                 sh """
-                    echo "===== Updating deployment.yml ====="
+                    echo "===== Jenkins Workspace ====="
+                    pwd
+                    ls -la
 
-                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|" git-app/deployment.yml
+                    echo "===== git-app contents ====="
+                    ls -la git-app
+
+                    echo "===== Updating deployment.yml ====="
+                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" git-app/deployment.yml
 
                     echo "===== Updated deployment.yml ====="
                     cat git-app/deployment.yml
-                """
-
-                sh """
-                    git config user.name "jenkins"
-                    git config user.email "jenkins@local"
-
-                    git add git-app/deployment.yml
-
-                    git commit -m "Update image to ${IMAGE_TAG}" || echo "No changes to commit"
-
-                    git push origin ${params.BRANCH}
                 """
             }
         }
@@ -96,7 +93,6 @@ pipeline {
         success {
             echo "✅ CI/CD completed successfully"
             echo "📦 Image pushed: ${FULL_IMAGE_NAME}"
-            echo "🚀 Argo CD will auto-sync"
         }
         failure {
             echo "❌ Pipeline failed"
