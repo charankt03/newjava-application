@@ -49,8 +49,8 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh """
-                echo "Building Docker Image: ${FULL_IMAGE_NAME}"
-                docker build -t ${FULL_IMAGE_NAME} .
+                    echo "Building Docker Image: ${FULL_IMAGE_NAME}"
+                    docker build -t ${FULL_IMAGE_NAME} .
                 """
             }
         }
@@ -58,13 +58,13 @@ pipeline {
         stage('Login & Push Image to ECR') {
             steps {
                 sh """
-                set -e
-                echo "Logging into ECR..."
-                aws ecr get-login-password --region ${AWS_REGION} \
-                | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    set -e
+                    echo "Logging into ECR..."
+                    aws ecr get-login-password --region ${AWS_REGION} \
+                    | docker login --username AWS --password-stdin ${ECR_REGISTRY}
 
-                echo "Pushing image: ${FULL_IMAGE_NAME}"
-                docker push ${FULL_IMAGE_NAME}
+                    echo "Pushing image: ${FULL_IMAGE_NAME}"
+                    docker push ${FULL_IMAGE_NAME}
                 """
             }
         }
@@ -72,11 +72,18 @@ pipeline {
         stage('Update Deployment YAML (GitOps style)') {
             steps {
                 sh """
-                    cd git-app
+                    echo "===== Jenkins Workspace ====="
+                    pwd
+                    ls -la
 
-                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" deployment.yaml
+                    echo "===== Listing git-app directory ====="
+                    ls -la git-app
 
-                    git status
+                    echo "===== Updating deployment.yaml ====="
+                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" git-app/deployment.yaml
+
+                    echo "===== Updated deployment.yaml ====="
+                    cat git-app/deployment.yaml
                 """
             }
         }
