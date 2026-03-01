@@ -17,6 +17,7 @@ pipeline {
     environment {
         SONAR_SERVER = 'sonarqube-server'
         SONAR_PROJECT_KEY = 'newjava-app'
+
         AWS_REGION = 'ap-south-1'
         AWS_ACCOUNT_ID = '410687236364'
         ECR_REPO_NAME = 'newjava-app'
@@ -25,7 +26,7 @@ pipeline {
         IMAGE_TAG = "${params.BRANCH}-${BUILD_NUMBER}"
         FULL_IMAGE_NAME = "${ECR_REGISTRY}/${ECR_REPO_NAME}:${IMAGE_TAG}"
 
-        AWS_PAGER = ""   // 🔥 disables AWS CLI pager
+        AWS_PAGER = ""
     }
 
     stages {
@@ -68,42 +69,23 @@ pipeline {
             }
         }
 
-        stage('Update GitOps Repo (ArgoCD)') {
+        stage('Update Deployment YAML (GitOps style)') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'github-creds',
-                        usernameVariable: 'GIT_USER',
-                        passwordVariable: 'GIT_TOKEN'
-                    )
-                ]) {
-                    sh """
-                        rm -rf gitops
-                        git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/charankt03/newjava-application.git
-                        cd java-demo-app/git-app
+                sh """
+                    cd git-app
 
-                        sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" deployment.yaml
+                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" deployment.yaml
 
-                        git config user.email "jenkins@ci.local"
-                        git config user.name "Jenkins CI"
-
-                        git add deployment.yaml
-
-                        if git diff --quiet && git diff --staged --quiet; then
-                            echo "No changes to commit"
-                        else
-                            git commit -m "Update image to ${IMAGE_TAG}"
-                            git push origin master
-                        fi
-                    """
-                }
+                    git status
+                """
             }
         }
     }
 
     post {
         success {
-            echo "✅ CI/CD completed successfully: ${FULL_IMAGE_NAME}"
+            echo "✅ CI/CD completed successfully"
+            echo "📦 Image pushed: ${FULL_IMAGE_NAME}"
         }
         failure {
             echo "❌ Pipeline failed"
