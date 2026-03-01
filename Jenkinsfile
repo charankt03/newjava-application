@@ -76,14 +76,14 @@ pipeline {
                     pwd
                     ls -la
 
-                    echo "===== Listing git-app directory ====="
+                    echo "===== git-app contents ====="
                     ls -la git-app
 
-                    echo "===== Updating deployment.yaml ====="
-                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" git-app/deployment.yaml
+                    echo "===== Updating deployment.yml ====="
+                    sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" git-app/deployment.yml
 
-                    echo "===== Updated deployment.yaml ====="
-                    cat git-app/deployment.yaml
+                    echo "===== Updated deployment.yml ====="
+                    cat git-app/deployment.yml
                 """
             }
         }
