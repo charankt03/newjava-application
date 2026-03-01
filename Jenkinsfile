@@ -79,8 +79,8 @@ pipeline {
                 ]) {
                     sh """
                         rm -rf gitops
-                        git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/charankt03/newjava-gitops.git gitops
-                        cd gitops/apps/newjava-app
+                        git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/charankt03/newjava-application.git
+                        cd java-demo-app/git-app
 
                         sed -i "s|image: .*|image: ${FULL_IMAGE_NAME}|g" deployment.yaml
 
@@ -93,7 +93,7 @@ pipeline {
                             echo "No changes to commit"
                         else
                             git commit -m "Update image to ${IMAGE_TAG}"
-                            git push origin main
+                            git push origin master
                         fi
                     """
                 }
